@@ -25,8 +25,6 @@ export const createToken = async (participantName: string, roomId: string) => {
   );
   at.addGrant({ roomJoin: true, room: roomName });
 
-
-
   return await at.toJwt();
 };
 
@@ -137,6 +135,3 @@ export const leaveMeeting = (req: Request, res: Response) => {
 
   res.json({ success: true });
 };
-
-
-

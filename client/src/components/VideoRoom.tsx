@@ -21,8 +21,10 @@ const VideoRoom = ({
         onConnected={() => console.log("Connected to LiveKit")}
         onDisconnected={(reason) =>
           console.log("Disconnected from LiveKit:", reason)
+          
         }
         onError={(e) => console.error("LiveKit Error:", e)}
+
       >
         <ConnectionState />
         <VideoConference />

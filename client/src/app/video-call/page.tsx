@@ -13,6 +13,7 @@ const Page = () => {
   const [joinMeeting, { isLoading: isJoining }] = useJoinCallMutation();
   const [createMeeting, { isLoading: isCreating }] = useCreateCallMutation();
 
+
   const handleCreateMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !roomId) {

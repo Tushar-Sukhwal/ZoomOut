@@ -9,7 +9,7 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push("/video");
+    router.push("/video-call");
   }, [router]);
 
   return (
