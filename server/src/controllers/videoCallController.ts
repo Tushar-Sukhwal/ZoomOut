@@ -25,14 +25,20 @@ export const createToken = async (participantName: string, roomId: string) => {
   );
   at.addGrant({ roomJoin: true, room: roomName });
 
+
+
   return await at.toJwt();
 };
 
 // Handle creating a new meeting
-export const createMeeting = async (req: Request, res: Response): Promise<any> => {
+// POST localhost:8000/api/video-call
+export const createMeeting = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  console.log("create Meeting");
   try {
-    const name = (req.query.name as string) || "Anonymous";
-    const roomId = req.query.roomId as string;
+    const { name = "Anonymous", roomId } = req.body;
 
     if (!roomId) {
       return res
@@ -47,7 +53,15 @@ export const createMeeting = async (req: Request, res: Response): Promise<any> =
     roomParticipants[roomId].add(name);
 
     const token = await createToken(name, roomId);
-    res.send(token);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes from now
+
+    res.json({
+      success: true,
+      token,
+      roomId,
+      expiresAt,
+      participants: Array.from(roomParticipants[roomId]),
+    });
   } catch (error) {
     console.error("Error creating token:", error);
     res.status(500).json({ success: false, message: "Failed to create token" });
@@ -55,10 +69,14 @@ export const createMeeting = async (req: Request, res: Response): Promise<any> =
 };
 
 // Handle joining an existing meeting
-export const joinMeeting = async (req: Request, res: Response) : Promise<any>=> {
+// POST localhost:8000/api/video-call/join
+export const joinMeeting = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  console.log("Join Meeting");
   try {
-    const name = req.query.name as string;
-    const roomId = req.query.roomId as string;
+    const { name, roomId } = req.body;
 
     if (!name || !roomId) {
       return res.status(400).json({
@@ -90,7 +108,12 @@ export const joinMeeting = async (req: Request, res: Response) : Promise<any>=> 
     // Create token for joining
     const token = await createToken(name, roomId);
 
-    res.json({ success: true, token });
+    res.json({
+      success: true,
+      token,
+      roomId,
+      participants: Array.from(roomParticipants[roomId]),
+    });
   } catch (error) {
     console.error("Error joining meeting:", error);
     res.status(500).json({ success: false, message: "Failed to join meeting" });
@@ -98,7 +121,9 @@ export const joinMeeting = async (req: Request, res: Response) : Promise<any>=> 
 };
 
 // Remove participant when they leave
-export const leaveMeeting = (req: Request, res: Response)   => {
+// POST localhost:8000/api/video-call/leave
+export const leaveMeeting = (req: Request, res: Response) => {
+  console.log("leave Meeting");
   const { name, roomId } = req.body;
 
   if (roomParticipants[roomId] && name) {
@@ -112,3 +137,6 @@ export const leaveMeeting = (req: Request, res: Response)   => {
 
   res.json({ success: true });
 };
+
+
+

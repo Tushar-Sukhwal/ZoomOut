@@ -9,8 +9,8 @@ import {
 const router = express.Router();
 
 // Routes for video call functionality
-router.get("/", createMeeting);
-router.get("/join", joinMeeting);
+router.post("/", createMeeting);
+router.post("/join", joinMeeting);
 router.post("/leave", leaveMeeting);
 
 export default router;

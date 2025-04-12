@@ -8,7 +8,7 @@ const express_1 = __importDefault(require("express"));
 const videoCallController_1 = require("../controllers/videoCallController");
 const router = express_1.default.Router();
 // Routes for video call functionality
-router.get("/", videoCallController_1.createMeeting);
-router.get("/join", videoCallController_1.joinMeeting);
+router.post("/", videoCallController_1.createMeeting);
+router.post("/join", videoCallController_1.joinMeeting);
 router.post("/leave", videoCallController_1.leaveMeeting);
 exports.default = router;
