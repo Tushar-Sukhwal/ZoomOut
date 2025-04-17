@@ -9,26 +9,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.leaveMeeting = exports.joinMeeting = exports.createMeeting = exports.createToken = void 0;
-const livekit_server_sdk_1 = require("livekit-server-sdk");
+exports.leaveMeeting = exports.joinMeeting = exports.createMeeting = void 0;
+const livekit_1 = require("../config/livekit");
+const egressService_1 = require("../services/egressService");
+const roomService_1 = require("../services/roomService");
 // Store active participants for each room
 const roomParticipants = {};
-// Create token for a new or existing room
-const createToken = (participantName, roomId) => __awaiter(void 0, void 0, void 0, function* () {
-    const roomName = `room-${roomId}`;
-    // Initialize room participants set if it doesn't exist
-    if (!roomParticipants[roomId]) {
-        roomParticipants[roomId] = new Set();
-    }
-    const at = new livekit_server_sdk_1.AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, {
-        identity: participantName,
-        // Token to expire after 10 minutes
-        ttl: "10m",
-    });
-    at.addGrant({ roomJoin: true, room: roomName });
-    return yield at.toJwt();
-});
-exports.createToken = createToken;
 // Handle creating a new meeting
 // POST localhost:8000/api/video-call
 const createMeeting = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -45,8 +31,22 @@ const createMeeting = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             roomParticipants[roomId] = new Set();
         }
         roomParticipants[roomId].add(name);
-        const token = yield (0, exports.createToken)(name, roomId);
+        // Create token for the participant
+        const token = yield (0, livekit_1.createToken)(name, roomId);
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes from now
+        // Get the LiveKit room name
+        const roomName = (0, livekit_1.getRoomName)(roomId);
+        // Explicitly create the room before starting egress
+        yield (0, roomService_1.createRoomIfNotExists)(roomName);
+        // Start egress and transcription for the room
+        try {
+            if (!(0, egressService_1.hasActiveEgress)(roomName)) {
+                yield (0, egressService_1.startRoomAudioEgress)(roomName);
+            }
+        }
+        catch (egressError) {
+            console.error("Failed to start egress, but allowing meeting to continue:", egressError);
+        }
         res.json({
             success: true,
             token,
@@ -90,7 +90,20 @@ const joinMeeting = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         // Add participant to the room
         roomParticipants[roomId].add(name);
         // Create token for joining
-        const token = yield (0, exports.createToken)(name, roomId);
+        const token = yield (0, livekit_1.createToken)(name, roomId);
+        // Get the LiveKit room name
+        const roomName = (0, livekit_1.getRoomName)(roomId);
+        // Ensure room exists in LiveKit
+        yield (0, roomService_1.createRoomIfNotExists)(roomName);
+        // Ensure egress is running for the room
+        try {
+            if (!(0, egressService_1.hasActiveEgress)(roomName)) {
+                yield (0, egressService_1.startRoomAudioEgress)(roomName);
+            }
+        }
+        catch (egressError) {
+            console.error("Failed to start egress, but allowing meeting to continue:", egressError);
+        }
         res.json({
             success: true,
             token,
@@ -104,18 +117,26 @@ const joinMeeting = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
     }
 });
 exports.joinMeeting = joinMeeting;
+// The leaveMeeting function remains unchanged
 // Remove participant when they leave
 // POST localhost:8000/api/video-call/leave
-const leaveMeeting = (req, res) => {
+const leaveMeeting = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     console.log("leave Meeting");
     const { name, roomId } = req.body;
     if (roomParticipants[roomId] && name) {
         roomParticipants[roomId].delete(name);
-        // Clean up empty rooms
+        // Clean up empty rooms and stop egress
         if (roomParticipants[roomId].size === 0) {
+            try {
+                const roomName = (0, livekit_1.getRoomName)(roomId);
+                yield (0, egressService_1.stopRoomEgress)(roomName);
+            }
+            catch (error) {
+                console.error(`Error stopping egress for room ${roomId}:`, error);
+            }
             delete roomParticipants[roomId];
         }
     }
     res.json({ success: true });
-};
+});
 exports.leaveMeeting = leaveMeeting;

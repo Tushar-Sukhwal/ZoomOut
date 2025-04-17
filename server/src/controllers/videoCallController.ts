@@ -1,32 +1,15 @@
 // src/controllers/videoCallController.ts
 import { Request, Response } from "express";
-import { AccessToken } from "livekit-server-sdk";
+import { createToken, getRoomName } from "../config/livekit";
+import {
+  startRoomAudioEgress,
+  stopRoomEgress,
+  hasActiveEgress,
+} from "../services/egressService";
+import { createRoomIfNotExists } from "../services/roomService";
 
 // Store active participants for each room
 const roomParticipants: Record<string, Set<string>> = {};
-
-// Create token for a new or existing room
-export const createToken = async (participantName: string, roomId: string) => {
-  const roomName = `room-${roomId}`;
-
-  // Initialize room participants set if it doesn't exist
-  if (!roomParticipants[roomId]) {
-    roomParticipants[roomId] = new Set();
-  }
-
-  const at = new AccessToken(
-    process.env.LIVEKIT_API_KEY,
-    process.env.LIVEKIT_API_SECRET,
-    {
-      identity: participantName,
-      // Token to expire after 10 minutes
-      ttl: "10m",
-    }
-  );
-  at.addGrant({ roomJoin: true, room: roomName });
-
-  return await at.toJwt();
-};
 
 // Handle creating a new meeting
 // POST localhost:8000/api/video-call
@@ -50,8 +33,27 @@ export const createMeeting = async (
     }
     roomParticipants[roomId].add(name);
 
+    // Create token for the participant
     const token = await createToken(name, roomId);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes from now
+
+    // Get the LiveKit room name
+    const roomName = getRoomName(roomId);
+
+    // Explicitly create the room before starting egress
+    await createRoomIfNotExists(roomName);
+
+    // Start egress and transcription for the room
+    try {
+      if (!hasActiveEgress(roomName)) {
+        await startRoomAudioEgress(roomName);
+      }
+    } catch (egressError) {
+      console.error(
+        "Failed to start egress, but allowing meeting to continue:",
+        egressError
+      );
+    }
 
     res.json({
       success: true,
@@ -106,6 +108,24 @@ export const joinMeeting = async (
     // Create token for joining
     const token = await createToken(name, roomId);
 
+    // Get the LiveKit room name
+    const roomName = getRoomName(roomId);
+
+    // Ensure room exists in LiveKit
+    await createRoomIfNotExists(roomName);
+
+    // Ensure egress is running for the room
+    try {
+      if (!hasActiveEgress(roomName)) {
+        await startRoomAudioEgress(roomName);
+      }
+    } catch (egressError) {
+      console.error(
+        "Failed to start egress, but allowing meeting to continue:",
+        egressError
+      );
+    }
+
     res.json({
       success: true,
       token,
@@ -118,17 +138,26 @@ export const joinMeeting = async (
   }
 };
 
+// The leaveMeeting function remains unchanged
+
 // Remove participant when they leave
 // POST localhost:8000/api/video-call/leave
-export const leaveMeeting = (req: Request, res: Response) => {
+export const leaveMeeting = async (req: Request, res: Response) => {
   console.log("leave Meeting");
   const { name, roomId } = req.body;
 
   if (roomParticipants[roomId] && name) {
     roomParticipants[roomId].delete(name);
 
-    // Clean up empty rooms
+    // Clean up empty rooms and stop egress
     if (roomParticipants[roomId].size === 0) {
+      try {
+        const roomName = getRoomName(roomId);
+        await stopRoomEgress(roomName);
+      } catch (error) {
+        console.error(`Error stopping egress for room ${roomId}:`, error);
+      }
+
       delete roomParticipants[roomId];
     }
   }
